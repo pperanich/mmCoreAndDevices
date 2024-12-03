@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <MM_3RDPARTYPRIVATE>$(MM_SRCROOT)\..</MM_3RDPARTYPRIVATE>
+  </PropertyGroup>
+</Project>

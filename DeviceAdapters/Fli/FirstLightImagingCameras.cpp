@@ -86,6 +86,7 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	_nbCameras(0),
 	_credTwo(false),
 	_credThree(false),
+	_cblueOne(false),
 	_isCapturing(false)
 {
 	FliSdk_init();
@@ -103,15 +104,23 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 			FliSdk_update();
 			_cameraModel = FliSdk_getCameraModel();
 
-			if(_cameraModel == Cred2)
+			if(_cameraModel == C_Red2)
 			{
 				_credTwo = true;
 				_credThree = false;
+				_cblueOne = false;
 			}
-			else if(_cameraModel == Cred3)
+			else if(_cameraModel == C_Red3)
 			{
 				_credTwo = false;
 				_credThree = true;
+				_cblueOne = false;
+			}
+			else if(_cameraModel == C_Blue1)
+			{
+				_credTwo = false;
+				_credThree = false;
+				_cblueOne = true;
 			}
 
 			_callbackCtx = FliSdk_addCallbackNewImage(onImageReceived, 0, this);
@@ -181,10 +190,10 @@ void FirstLightImagingCameras::createProperties()
 		for(int i = 0; i < _nbCameras; ++i)
 			values.push_back(std::string(_listOfCameras[i]));
 		SetAllowedValues("Cameras", values);
-	}
 
-	pAct = new CPropertyAction(this, &FirstLightImagingCameras::onSendCommand);
-	CreateStringProperty("Send command", "", false, pAct);
+		pAct = new CPropertyAction(this, &FirstLightImagingCameras::onSendCommand);
+		CreateStringProperty("Send command", "", false, pAct);
+	}
 
 	if (_credTwo)
 	{
@@ -193,8 +202,64 @@ void FirstLightImagingCameras::createProperties()
 
 		CreateFloatProperty("Sensor Temp", 0.0, true, nullptr, false);
 	}
-	else
+	else if (_credThree) {
 		CreateFloatProperty("Set sensor temp", 0, true, nullptr);
+	}
+	else if (_cblueOne) {
+
+		// Temperature Selector
+        CreateProperty("Temperature Selector", "Sensor", MM::String, false, new CPropertyAction(this, &FirstLightImagingCameras::onTemperatureSelector));
+		AddAllowedValue("Temperature Selector", "Sensor");
+		AddAllowedValue("Temperature Selector", "CPU");
+		AddAllowedValue("Temperature Selector", "Power");
+		AddAllowedValue("Temperature Selector", "Frontend");
+		AddAllowedValue("Temperature Selector", "Heatsink");
+		AddAllowedValue("Temperature Selector", "Case");
+
+        // Cooling Setpoint
+        CreateProperty("Cooling Setpoint", "0", MM::Float, false, new CPropertyAction(this, &FirstLightImagingCameras::onCoolingSetpoint));
+
+        // Frame Rate Properties
+        CreateProperty("Frame Rate", "0", MM::Float, false, new CPropertyAction(this, &FirstLightImagingCameras::onFps));
+        CreateProperty("Frame Rate Min", "0", MM::Float, true, new CPropertyAction(this, &FirstLightImagingCameras::onFrameRateMin));
+        CreateProperty("Frame Rate Max", "0", MM::Float, true, new CPropertyAction(this, &FirstLightImagingCameras::onFrameRateMax));
+
+        // Exposure Properties
+        CreateProperty("Exposure Time (ms)", "0", MM::Float, false, new CPropertyAction(this, &FirstLightImagingCameras::onExposureTime));
+        CreateProperty("Exposure Time Min", "0", MM::Float, true, new CPropertyAction(this, &FirstLightImagingCameras::onExposureTimeMin));
+        CreateProperty("Exposure Time Max", "0", MM::Float, true, new CPropertyAction(this, &FirstLightImagingCameras::onExposureTimeMax));
+
+        // Gain Control
+        CreateProperty("Gain", "0", MM::Float, false, new CPropertyAction(this, &FirstLightImagingCameras::onGain));
+
+        // Conversion Efficiency
+		CreateProperty("Conversion Efficiency", "Low", MM::String, false, new CPropertyAction(this, &FirstLightImagingCameras::onConvEfficiency));
+		AddAllowedValue("Conversion Efficiency", "Low");
+		AddAllowedValue("Conversion Efficiency", "High");
+
+        // Pixel Format
+        CreateProperty("Pixel Format", "Mono8", MM::String, false, new CPropertyAction(this, &FirstLightImagingCameras::onPixelFormat));
+        AddAllowedValue("Pixel Format", "Mono8");
+        AddAllowedValue("Pixel Format", "Mono12");
+
+        // Reverse X/Y
+        CreateProperty("Reverse X", "0", MM::Integer, false, new CPropertyAction(this, &FirstLightImagingCameras::onReverseX));
+		AddAllowedValue("Reverse X", "0"); // 0 for false
+		AddAllowedValue("Reverse X", "1"); // 1 for true
+
+		CreateProperty("Reverse Y", "0", MM::Integer, false, new CPropertyAction(this, &FirstLightImagingCameras::onReverseY));
+		AddAllowedValue("Reverse Y", "0"); // 0 for false
+		AddAllowedValue("Reverse Y", "1"); // 1 for true
+
+        // Fan Mode
+        CreateProperty("Fan Mode", "Auto", MM::String, false, new CPropertyAction(this, &FirstLightImagingCameras::onFanMode));
+        AddAllowedValue("Fan Mode", "Auto");
+        AddAllowedValue("Fan Mode", "Manual");
+
+        // Device Status
+        CreateProperty("Device Status", "", MM::String, true, new CPropertyAction(this, &FirstLightImagingCameras::onDeviceStatus));
+	}
+	
 
 	pAct = new CPropertyAction(this, &FirstLightImagingCameras::onDetectCameras);
 	CreateIntegerProperty("Detect cameras", 0, false, pAct);
@@ -203,6 +268,323 @@ void FirstLightImagingCameras::createProperties()
 	pAct = new CPropertyAction(this, &FirstLightImagingCameras::onBinning);
 	CreateProperty(MM::g_Keyword_Binning, "1", MM::Integer, false, pAct);
 }
+
+// --------------------------------------------------------------
+// CBlue1 functions
+int FirstLightImagingCameras::onTemperatureSelector(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+		if (eAct == MM::AfterSet)
+        {
+            std::string selector;
+            pProp->Get(selector);
+
+            DeviceTemperatureSelectorEnum tempSelector;
+            if (selector == "Sensor")
+                tempSelector = DeviceTemperatureSelector_Sensor;
+            else if (selector == "CPU")
+                tempSelector = DeviceTemperatureSelector_CPU;
+            else if (selector == "Power")
+                tempSelector = DeviceTemperatureSelector_Power;
+            else if (selector == "Frontend")
+                tempSelector = DeviceTemperatureSelector_Frontend;
+            else if (selector == "Heatsink")
+                tempSelector = DeviceTemperatureSelector_Heatsink;
+            else if (selector == "Case")
+                tempSelector = DeviceTemperatureSelector_Case;
+            else
+                return DEVICE_INVALID_PROPERTY_VALUE;
+
+            Cblue1_setDeviceTemperatureSelector(tempSelector);
+        }
+		else if (eAct == MM::BeforeGet)
+		{
+			DeviceTemperatureSelectorEnum tempSelector;
+			Cblue1_getDeviceTemperatureSelector(&tempSelector);
+
+			std::string selector;
+			switch (tempSelector)
+			{
+			case DeviceTemperatureSelector_Sensor:
+				selector = "Sensor";
+				break;
+			case DeviceTemperatureSelector_CPU:
+				selector = "CPU";
+				break;
+			case DeviceTemperatureSelector_Power:
+				selector = "Power";
+				break;
+			case DeviceTemperatureSelector_Frontend:
+				selector = "Frontend";
+				break;
+			case DeviceTemperatureSelector_Heatsink:
+				selector = "Heatsink";
+				break;
+			case DeviceTemperatureSelector_Case:
+				selector = "Case";
+				break;
+			default:
+				return DEVICE_ERR; // Unknown value
+			}
+
+			pProp->Set(selector.c_str());
+		}
+	}
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onCoolingSetpoint(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            double setpoint;
+            pProp->Get(setpoint);
+            Cblue1_setDeviceCoolingSetpoint(setpoint);
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            double setpoint;
+            Cblue1_getDeviceCoolingSetpoint(&setpoint);
+            pProp->Set(setpoint);
+        }
+    }
+    return DEVICE_OK;
+}
+
+
+int FirstLightImagingCameras::onFrameRateMin(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne && eAct == MM::BeforeGet)
+    {
+        double frameRateMin;
+        Cblue1_getAcquisitionFrameRateMinReg(&frameRateMin);
+        pProp->Set(frameRateMin);
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onFrameRateMax(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne && eAct == MM::BeforeGet)
+    {
+        double frameRateMax;
+        Cblue1_getAcquisitionFrameRateMaxReg(&frameRateMax);
+        pProp->Set(frameRateMax);
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onExposureTime(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            double exposure;
+            pProp->Get(exposure);
+            CblueSfnc_setExposureTime(exposure * 1000); // Convert ms to microseconds
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            double exposure;
+            CblueSfnc_getExposureTime(&exposure);
+            pProp->Set(exposure / 1000); // Convert microseconds to ms
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onExposureTimeMin(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne && eAct == MM::BeforeGet)
+    {
+        double exposureMin;
+        Cblue1_getExposureTimeMinReg(&exposureMin);
+        pProp->Set(exposureMin / 1000.0); // Convert microseconds to ms
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onExposureTimeMax(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne && eAct == MM::BeforeGet)
+    {
+        double exposureMax;
+        Cblue1_getExposureTimeMaxReg(&exposureMax);
+        pProp->Set(exposureMax / 1000.0); // Convert microseconds to ms
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onGain(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            double gain;
+            pProp->Get(gain);
+
+            // Handle analog and digital gains separately
+            if (gain <= 24)
+            {
+                CblueSfnc_setGainSelector(GainSelectorEnum::GainSelector_AnalogAll);
+                CblueSfnc_setGain(gain);
+            }
+            else
+            {
+                CblueSfnc_setGainSelector(GainSelectorEnum::GainSelector_AnalogAll);
+                CblueSfnc_setGain(24);
+                CblueSfnc_setGainSelector(GainSelectorEnum::GainSelector_DigitalAll);
+                CblueSfnc_setGain(gain - 24);
+            }
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            double analogGain = 0, digitalGain = 0;
+            CblueSfnc_setGainSelector(GainSelectorEnum::GainSelector_AnalogAll);
+            CblueSfnc_getGain(&analogGain);
+            CblueSfnc_setGainSelector(GainSelectorEnum::GainSelector_DigitalAll);
+            CblueSfnc_getGain(&digitalGain);
+
+            pProp->Set(analogGain + digitalGain);
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onConvEfficiency(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string efficiency;
+            pProp->Get(efficiency);
+
+            ConversionEfficiencyEnum convEff;
+            if (efficiency == "Low")
+                convEff = ConversionEfficiency_Low;
+            else if (efficiency == "High")
+                convEff = ConversionEfficiency_High;
+            else
+                return DEVICE_INVALID_PROPERTY_VALUE;
+
+            Cblue1_setConversionEfficiency(convEff);
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            ConversionEfficiencyEnum convEff;
+            Cblue1_getConversionEfficiency(&convEff);
+
+            std::string efficiency = (convEff == ConversionEfficiency_Low) ? "Low" : "High";
+            pProp->Set(efficiency.c_str());
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string format;
+            pProp->Get(format);
+
+            PixelFormatEnum pixelFormat = (format == "Mono8") ? PixelFormatEnum::PixelFormat_Mono8 : PixelFormatEnum::PixelFormat_Mono12;
+            CblueSfnc_setPixelFormat(pixelFormat);
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            PixelFormatEnum pixelFormat;
+            CblueSfnc_getPixelFormat(&pixelFormat);
+
+            pProp->Set((pixelFormat == PixelFormatEnum::PixelFormat_Mono8) ? "Mono8" : "Mono12");
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onReverseX(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            long reverseX;
+            pProp->Get(reverseX);
+            CblueSfnc_setReverseX(reverseX != 0); // Convert Integer to boolean
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            bool reverseX;
+            CblueSfnc_getReverseX(&reverseX);
+            pProp->Set(reverseX ? 1L : 0L); // Convert boolean to Integer
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onReverseY(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            long reverseY;
+            pProp->Get(reverseY);
+            CblueSfnc_setReverseY(reverseY != 0); // Convert Integer to boolean
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            bool reverseY;
+            CblueSfnc_getReverseY(&reverseY);
+            pProp->Set(reverseY ? 1L : 0L); // Convert boolean to Integer
+        }
+    }
+    return DEVICE_OK;
+}
+
+
+int FirstLightImagingCameras::onFanMode(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string mode;
+            pProp->Get(mode);
+
+            DeviceFanModeEnum fanMode = (mode == "Auto") ? DeviceFanModeEnum::DeviceFanMode_Automatic : DeviceFanModeEnum::DeviceFanMode_Manual;
+            Cblue1_setDeviceFanMode(fanMode);
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            DeviceFanModeEnum fanMode;
+            Cblue1_getDeviceFanMode(&fanMode);
+
+            pProp->Set((fanMode == DeviceFanModeEnum::DeviceFanMode_Automatic) ? "Auto" : "Manual");
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onDeviceStatus(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    if (_cblueOne && eAct == MM::BeforeGet)
+    {
+        char status[256];
+        Cblue1_getDeviceStatus(status);
+        pProp->Set(status);
+    }
+    return DEVICE_OK;
+}
+
 
 //---------------------------------------------------------------
 void FirstLightImagingCameras::imageReceived(const uint8_t* image)
@@ -290,6 +672,8 @@ void FirstLightImagingCameras::SetExposure(double exp_ms)
 		Cred2_setTint(exp_ms / 1000.0);
 	else if (_credThree)
 		Cred3_setTint(exp_ms / 1000.0);
+	else if (_cblueOne)
+		CblueSfnc_setExposureTime(exp_ms / 1000.0);
 }
 
 //---------------------------------------------------------------
@@ -301,6 +685,8 @@ double FirstLightImagingCameras::GetExposure() const
 		Cred2_getTint(&tint);
 	else if (_credThree)
 		Cred3_getTint(&tint);
+	else if (_cblueOne)
+		CblueSfnc_getExposureTime(&tint);
 
 	return tint*1000;
 }
@@ -308,12 +694,20 @@ double FirstLightImagingCameras::GetExposure() const
 //---------------------------------------------------------------
 int FirstLightImagingCameras::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
 {
-	CroppingData_C cropping;
-	cropping.col1 = roundUp(x, 32);
-	cropping.col2 = roundUp(x + xSize, 32)-1;
-	cropping.row1 = roundUp(y, 4);
-	cropping.row2 = roundUp(y + ySize,4)-1;
-	FliSdk_setCroppingState(true, cropping);
+	if (_credTwo || _credThree) {
+		CroppingData_C cropping;
+		cropping.col1 = roundUp(x, 32);
+		cropping.col2 = roundUp(x + xSize, 32) - 1;
+		cropping.row1 = roundUp(y, 4);
+		cropping.row2 = roundUp(y + ySize, 4) - 1;
+		FliSdk_setCroppingState(true, cropping);
+	}
+	else if (_cblueOne) {
+			CblueSfnc_setOffsetX(roundUp(x, 16));
+			CblueSfnc_setOffsetY(roundUp(y, 8));
+			CblueSfnc_setWidth(roundUp(x+xSize, 16));
+			CblueSfnc_setHeight(roundUp(y+ySize, 8));
+	}
 	_croppingEnabled = true;
 	return DEVICE_OK;
 }
@@ -330,13 +724,27 @@ int FirstLightImagingCameras::GetROI(unsigned& x, unsigned& y, unsigned& xSize, 
 	}
 	else
 	{
-		CroppingData_C cropping;
-		bool enabled;
-		FliSdk_getCroppingState(&enabled, &cropping);
-		x = cropping.col1;
-		xSize = cropping.col2 - x;
-		y = cropping.row1;
-		ySize = cropping.row2 - y;
+		if (_credTwo || _credThree) {
+			CroppingData_C cropping;
+			bool enabled;
+			FliSdk_getCroppingState(&enabled, &cropping);
+			x = cropping.col1;
+			xSize = cropping.col2 - x;
+			y = cropping.row1;
+			ySize = cropping.row2 - y;
+		}
+		else if (_cblueOne) {
+			int64_t offsetX, offsetY, width, height;
+			CblueSfnc_getOffsetX(&offsetX);
+			CblueSfnc_getOffsetY(&offsetY);
+			CblueSfnc_getWidth(&width);
+			CblueSfnc_getHeight(&height);
+
+			x = static_cast<unsigned>(offsetX);
+			y = static_cast<unsigned>(offsetY);
+			xSize = static_cast<unsigned>(width);
+			ySize = static_cast<unsigned>(height);
+		}
 	}
 	return DEVICE_OK;
 }
@@ -344,12 +752,25 @@ int FirstLightImagingCameras::GetROI(unsigned& x, unsigned& y, unsigned& xSize, 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::ClearROI()
 {
-	CroppingData_C cropping;
-	cropping.col1 = 0;
-	cropping.col2 = 0;
-	cropping.row1 = 0;
-	cropping.row2 = 0;
-	FliSdk_setCroppingState(false, cropping);
+	if (_credTwo || _credThree) {
+		CroppingData_C cropping;
+		cropping.col1 = 0;
+		cropping.col2 = 0;
+		cropping.row1 = 0;
+		cropping.row2 = 0;
+		FliSdk_setCroppingState(false, cropping);
+	}
+	else if (_cblueOne) {
+		// Reset ROI to full image dimensions
+		int64_t widthMax, heightMax;
+		CblueSfnc_getWidthMax(&widthMax);
+		CblueSfnc_getHeightMax(&heightMax);
+
+		CblueSfnc_setOffsetX(0);
+		CblueSfnc_setOffsetY(0);
+		CblueSfnc_setWidth(widthMax);
+		CblueSfnc_setHeight(heightMax);
+	}
 	_croppingEnabled = false;
 	return DEVICE_OK;
 }
@@ -483,16 +904,33 @@ int FirstLightImagingCameras::onMaxFps(MM::PropertyBase* pProp, MM::ActionType e
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onFps(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		FliCamera_getFps(&_fps);
-		pProp->Set(_fps);
+	if (_credTwo || _credThree) {
+		if (eAct == MM::BeforeGet)
+		{
+			FliCamera_getFps(&_fps);
+			pProp->Set(_fps);
+		}
+		else if (eAct == MM::AfterSet)
+		{
+			pProp->Get(_fps);
+			FliCamera_setFps(_fps);
+		}
 	}
-	else if (eAct == MM::AfterSet)
-	{
-		pProp->Get(_fps);
-		FliCamera_setFps(_fps);
-	}
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            double fps;
+            pProp->Get(fps);
+            CblueSfnc_setAcquisitionFrameRate(fps);
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            double fps;
+            CblueSfnc_getAcquisitionFrameRate(&fps);
+            pProp->Set(fps);
+        }
+    }
 	return DEVICE_OK;
 }
 
@@ -509,15 +947,23 @@ int FirstLightImagingCameras::onCameraChange(MM::PropertyBase* pProp, MM::Action
 
 		_cameraModel = FliSdk_getCameraModel();
 
-		if(_cameraModel == Cred2)
+		if(_cameraModel == C_Red2)
 		{
 			_credTwo = true;
 			_credThree = false;
+			_cblueOne = false;
 		}
-		else if(_cameraModel == Cred3)
+		else if(_cameraModel == C_Red3)
 		{
 			_credTwo = false;
 			_credThree = true;
+			_cblueOne = false;
+		}
+		else if(_cameraModel == C_Blue1)
+		{
+			_credTwo = false;
+			_credThree = false;
+			_cblueOne = true;
 		}
 	}
 
@@ -555,15 +1001,23 @@ int FirstLightImagingCameras::onDetectCameras(MM::PropertyBase* pProp, MM::Actio
 					FliSdk_update();
 					_cameraModel = FliSdk_getCameraModel();
 
-					if(_cameraModel == Cred2)
+					if(_cameraModel == C_Red2)
 					{
 						_credTwo = true;
 						_credThree = false;
+						_cblueOne = false;
 					}
-					else if(_cameraModel == Cred3)
+					else if(_cameraModel == C_Red3)
 					{
 						_credTwo = false;
 						_credThree = true;
+						_cblueOne = false;
+					}
+					else if(_cameraModel == C_Blue1)
+					{
+						_credTwo = false;
+						_credThree = false;
+						_cblueOne = true;
 					}
 
 					FliSdk_start();
@@ -636,6 +1090,8 @@ int FirstLightImagingCameras::onSetMaxExposure(MM::PropertyBase* pProp, MM::Acti
 		if (_credTwo)
 			Cred2_setTint(_maxExposure);
 		else if (_credThree)
+			Cred3_setTint(_maxExposure);
+		else if (_cblueOne)
 			Cred3_setTint(_maxExposure);
 		break;
 	case MM::BeforeGet:

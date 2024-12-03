@@ -81,14 +81,31 @@ private:
 	int onApplySensorTemp(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int onShutdown(MM::PropertyBase* pProp, MM::ActionType eAct);
 
+	// Property Actions for CBlue1
+    int onTemperatureSelector(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onCoolingSetpoint(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onFrameRateMin(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onFrameRateMax(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onExposureTime(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onExposureTimeMin(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onExposureTimeMax(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onGain(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onConvEfficiency(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onReverseX(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onReverseY(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onFanMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onDeviceStatus(MM::PropertyBase* pProp, MM::ActionType eAct);
+
 	void createProperties();
 
 private:
 	bool			_initialized;
 	std::string		_cameraName;
-	CameraModel		_cameraModel;
+	CameraModel_C	_cameraModel;
 	bool			_credTwo;
 	bool			_credThree;
+	bool			_cblueOne;
 	double			_fpsTrigger;
 	double			_maxExposure;
 	double			_maxFps;
