@@ -148,7 +148,9 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	_credTwo(false),
 	_credThree(false),
 	_cblueOne(false),
-	_isCapturing(false)
+	_isCapturing(false),
+	_width(0),
+	_height(0)
 {
 	auto start = std::chrono::high_resolution_clock::now();
 
@@ -234,10 +236,10 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	}
 
 	// Create properties
-	//createProperties();
-	//stepEnd = std::chrono::high_resolution_clock::now();
-	//std::cout << "after createProperties(), duration = " 
- //             << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+	createProperties();
+	stepEnd = std::chrono::high_resolution_clock::now();
+	std::cout << "after createProperties(), duration = " 
+             << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
 
 	auto end = std::chrono::high_resolution_clock::now();
 	std::cout << "Total initialization time = " 
@@ -715,13 +717,14 @@ int FirstLightImagingCameras::onDeviceStatus(MM::PropertyBase* pProp, MM::Action
 //---------------------------------------------------------------
 void FirstLightImagingCameras::imageReceived(const uint8_t* image)
 {
-	std::cout << "In imageReceived (before _isCapturing check)." << std::endl;
 	if (!_isCapturing)
 		return;
 
 	std::cout << "In imageReceived" << std::endl;
-	unsigned int w = GetImageWidth();
-	unsigned int h = GetImageHeight();
+	// unsigned int w = GetImageWidth();
+	// unsigned int h = GetImageHeight();
+	unsigned int w = _width;
+	unsigned int h = _height;
 	unsigned int b = GetImageBytesPerPixel();
 
 	Metadata md;
@@ -1000,6 +1003,8 @@ unsigned FirstLightImagingCameras::GetImageBytesPerPixel() const
 //---------------------------------------------------------------
 int FirstLightImagingCameras::SnapImage()
 {
+	_width = GetImageWidth();
+	_height = GetImageHeight();
 	std::cout << "In SnapImage" <<::std::endl;
 	return DEVICE_OK;
 }
@@ -1008,6 +1013,8 @@ int FirstLightImagingCameras::SnapImage()
 int FirstLightImagingCameras::StartSequenceAcquisition(long /*numImages*/, double /*interval_ms*/, bool /*stopOnOverflow*/)
 {
 	std::cout << "In StartSequenceAcquisition" <<::std::endl;
+	_width = GetImageWidth();
+	_height = GetImageHeight();
 	_isCapturing = true;
 	return DEVICE_OK;
 }
