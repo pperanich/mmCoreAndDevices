@@ -97,7 +97,15 @@ private:
     int onFanMode(MM::PropertyBase* pProp, MM::ActionType eAct);
     int onDeviceStatus(MM::PropertyBase* pProp, MM::ActionType eAct);
 
+    // Add new property handlers for CBlue acquisition
+    int onAcquisitionMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onAcquisitionStart(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onAcquisitionStop(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int onAcquisitionAbort(MM::PropertyBase* pProp, MM::ActionType eAct);
+
 	void createProperties();
+
+	void updateImageDimensions();
 
 private:
 	bool			_initialized;
@@ -118,6 +126,10 @@ private:
 	FliThreadImp*	_refreshThread;
 	callbackHandler	_callbackCtx;
 	bool			_isCapturing;
+
+	unsigned int _currentWidth;
+	unsigned int _currentHeight;
+	unsigned int _bytesPerPixel;
 };
 
 class FliThreadImp : public MMDeviceThreadBase

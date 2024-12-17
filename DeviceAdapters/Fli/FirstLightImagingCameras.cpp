@@ -29,10 +29,13 @@
 #include <cstdlib>
 #include <iostream>
 #include <chrono>
+#include <string>
 
 
 #include "FliSdk_utils.h"
 #include "ModuleInterface.h"
+#include "../../MMDevice/DeviceUtils.h"
+#include "../../MMDevice/ModuleInterface.h"
 
 //---------------------------------------------------------------
 int roundUp(int numToRound, int multiple)
@@ -78,67 +81,6 @@ void onImageReceived(const uint8_t* image, void* ctx)
 	context->imageReceived(image);
 }
 
-//---------------------------------------------------------------
-// FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
-// 	_initialized(false),
-// 	_cameraName(cameraName),
-// 	_cameraModel(undefined),
-// 	_nbCameras(0),
-// 	_credTwo(false),
-// 	_credThree(false),
-// 	_cblueOne(false),
-// 	_isCapturing(false)
-// {
-// 	std::cout << "In FirstLightImagingCameras initialization" << std::endl;
-// 	FliSdk_init();
-// 	std::cout << "after FliSdk_init()" << std::endl;
-// 	uint8_t nbGrabbers = 0;
-// 	FliSdk_detectGrabbers(&nbGrabbers);
-// 	std::cout << "after FliSdk_detectGrabbers(), nbGrabbers = " << std::to_string(nbGrabbers) << std::endl;
-
-// 	if(nbGrabbers > 0)
-// 	{
-// 		_listOfCameras = FliSdk_detectCameras(&_nbCameras);
-// 		std::cout << "after FliSdk_detectCameras(), nbCameras = " << std::to_string(_nbCameras) << std::endl;
-
-// 		if(_nbCameras > 0)
-// 		{
-// 			FliSdk_setCamera(_listOfCameras[0]);
-// 			FliSdk_setBufferSize(500);
-// 			FliSdk_update();
-// 			_cameraModel = FliSdk_getCameraModel();
-// 			std::cout << "after FliSdk_getCameraModel(), _cameraModel = " << std::to_string(_cameraModel) << std::endl;
-
-// 			if(_cameraModel == C_Red2)
-// 			{
-// 				_credTwo = true;
-// 				_credThree = false;
-// 				_cblueOne = false;
-// 			}
-// 			else if(_cameraModel == C_Red3)
-// 			{
-// 				_credTwo = false;
-// 				_credThree = true;
-// 				_cblueOne = false;
-// 			}
-// 			else if(_cameraModel == C_Blue1)
-// 			{
-// 				_credTwo = false;
-// 				_credThree = false;
-// 				_cblueOne = true;
-// 			}
-
-// 			//_callbackCtx = FliSdk_addCallbackNewImage(onImageReceived, 0, this);
-// 			//FliSdk_start();
-// 			//_refreshThread = new FliThreadImp(this);
-// 			//_refreshThread->activate();
-// 		}
-// 	}
-
-// 	createProperties();
-// 	std::cout << "after createProperties()" << std::endl;
-// }
-
 
 FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	_initialized(false),
@@ -148,18 +90,21 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	_credTwo(false),
 	_credThree(false),
 	_cblueOne(false),
-	_isCapturing(false)
+	_isCapturing(false),
+	_currentWidth(0),
+	_currentHeight(0),
+	_bytesPerPixel(2)  // Always 2 as per GetImageBytesPerPixel()
 {
 	auto start = std::chrono::high_resolution_clock::now();
 
-	std::cout << "In FirstLightImagingCameras initialization" << std::endl;
+	LogMessage("In FirstLightImagingCameras initialization", true);
 	auto stepStart = start;
 
 	// Initialize SDK
 	FliSdk_init();
 	auto stepEnd = std::chrono::high_resolution_clock::now();
-	std::cout << "after FliSdk_init(), duration = " 
-              << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+	LogMessage("After FliSdk_init(), duration = " + 
+              std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 	stepStart = stepEnd;
 
@@ -167,8 +112,8 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	uint8_t nbGrabbers = 0;
 	FliSdk_detectGrabbers(&nbGrabbers);
 	stepEnd = std::chrono::high_resolution_clock::now();
-	std::cout << "after FliSdk_detectGrabbers(), nbGrabbers = " << std::to_string(nbGrabbers)
-              << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+	LogMessage("After FliSdk_detectGrabbers(), nbGrabbers = " + std::to_string(nbGrabbers) +
+              ", duration = " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 	stepStart = stepEnd;
 
@@ -176,9 +121,10 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	{
 		// Detect cameras
 		_listOfCameras = FliSdk_detectCameras(&_nbCameras);
+		
 		stepEnd = std::chrono::high_resolution_clock::now();
-		std::cout << "after FliSdk_detectCameras(), nbCameras = " << std::to_string(_nbCameras)
-                  << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+		LogMessage("After FliSdk_detectCameras(), nbCameras = " + std::to_string(_nbCameras) +
+                  ", duration = " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 		stepStart = stepEnd;
 
@@ -186,30 +132,32 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 		{
 			// Set camera
 			FliSdk_setCamera(_listOfCameras[0]);
+			
 			stepEnd = std::chrono::high_resolution_clock::now();
-			std::cout << "after FliSdk_setCamera(), _listOfCameras[0] = " << _listOfCameras[0]
-                      << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+			LogMessage("After FliSdk_setCamera(), _listOfCameras[0] = " + std::string(_listOfCameras[0]) +
+                      ", duration = " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 			stepStart = stepEnd;
 
 			FliSdk_setBufferSize(500);
+			
 			stepEnd = std::chrono::high_resolution_clock::now();
-			std::cout << "after FliSdk_setBufferSize()"
-                      << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+			LogMessage("After FliSdk_setBufferSize(), duration = " + 
+                      std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 			stepStart = stepEnd;
 
 			FliSdk_update();
 			stepEnd = std::chrono::high_resolution_clock::now();
-			std::cout << "after FliSdk_update()"
-                      << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+			LogMessage("After FliSdk_update(), duration = " + 
+                      std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 			stepStart = stepEnd;
 
 			_cameraModel = FliSdk_getCameraModel();
 			stepEnd = std::chrono::high_resolution_clock::now();
-			std::cout << "after FliSdk_getCameraModel(), _cameraModel = " << std::to_string(_cameraModel)
-                      << ", duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+			LogMessage("After FliSdk_getCameraModel(), _cameraModel = " + std::to_string(static_cast<int>(_cameraModel)) +
+                      ", duration = " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count()) + " ms", true);
 
 			stepStart = stepEnd;
 
@@ -234,16 +182,54 @@ FirstLightImagingCameras::FirstLightImagingCameras(std::string cameraName) :
 	}
 
 	// Create properties
-	//createProperties();
-	//stepEnd = std::chrono::high_resolution_clock::now();
-	//std::cout << "after createProperties(), duration = " 
- //             << std::chrono::duration_cast<std::chrono::milliseconds>(stepEnd - stepStart).count() << " ms" << std::endl;
+	createProperties();
 
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << "Total initialization time = " 
-              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
+	LogMessage("Total initialization time = " + 
+              std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) + " ms", true);
+
+	// Initialize dimensions after camera is set up
+	updateImageDimensions();
 }
 
+// Add new helper function
+void FirstLightImagingCameras::updateImageDimensions()
+{
+	if (_credTwo || _credThree) 
+    {
+        uint16_t width, height;
+        FliSdk_getCurrentImageDimension(&width, &height);
+        _currentWidth = width;
+        _currentHeight = height;
+    } 
+    else if (_cblueOne) 
+    {
+        int64_t width, height;
+        CblueSfnc_getWidth(&width);
+        CblueSfnc_getHeight(&height);
+
+        // Safely cast after checking range
+        if (width >= 0 && width <= 65535) // Hardcoded max value for uint16_t
+        {
+            _currentWidth = static_cast<unsigned int>(width);
+        } 
+        else 
+        {
+            LogMessage("Width value out of range for uint16_t: " + std::to_string(static_cast<int64_t>(width)), false);
+            _currentWidth = 0;
+        }
+
+        if (height >= 0 && height <= 65535)
+        {
+            _currentHeight = static_cast<unsigned int>(height);
+        }
+        else 
+        {
+            LogMessage("Height value out of range for uint16_t: " + std::to_string(static_cast<int64_t>(height)), false);
+            _currentHeight = 0;
+        }
+    }
+}
 
 //---------------------------------------------------------------
 FirstLightImagingCameras::~FirstLightImagingCameras()
@@ -370,6 +356,30 @@ void FirstLightImagingCameras::createProperties()
 
         // Device Status
         CreateProperty("Device Status", "", MM::String, true, new CPropertyAction(this, &FirstLightImagingCameras::onDeviceStatus));
+
+        // Add Acquisition Mode property
+        CreateProperty("Acquisition Mode", "Continuous", MM::String, false, 
+                      new CPropertyAction(this, &FirstLightImagingCameras::onAcquisitionMode));
+        AddAllowedValue("Acquisition Mode", "Continuous");
+        AddAllowedValue("Acquisition Mode", "SingleFrame");
+        AddAllowedValue("Acquisition Mode", "MultiFrame");
+
+        // Add Acquisition Control buttons
+        std::vector<std::string> acqValues;
+        acqValues.push_back("0");
+        acqValues.push_back("1");
+
+        CreateProperty("Start Acquisition", "0", MM::Integer, false, 
+                      new CPropertyAction(this, &FirstLightImagingCameras::onAcquisitionStart));
+        SetAllowedValues("Start Acquisition", acqValues);
+
+        CreateProperty("Stop Acquisition", "0", MM::Integer, false, 
+                      new CPropertyAction(this, &FirstLightImagingCameras::onAcquisitionStop));
+        SetAllowedValues("Stop Acquisition", acqValues);
+
+        CreateProperty("Abort Acquisition", "0", MM::Integer, false, 
+                      new CPropertyAction(this, &FirstLightImagingCameras::onAcquisitionAbort));
+        SetAllowedValues("Abort Acquisition", acqValues);
 	}
 	
 
@@ -385,7 +395,7 @@ void FirstLightImagingCameras::createProperties()
 // CBlue1 functions
 int FirstLightImagingCameras::onTemperatureSelector(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onTemperatureSelector"<< std::endl;
+	LogMessage("In onTemperatureSelector", true);
     if (_cblueOne)
     {
 		if (eAct == MM::AfterSet)
@@ -449,7 +459,7 @@ int FirstLightImagingCameras::onTemperatureSelector(MM::PropertyBase* pProp, MM:
 
 int FirstLightImagingCameras::onCoolingSetpoint(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onCoolingSetpoint"<< std::endl;
+	LogMessage("In onCoolingSetpoint", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -471,7 +481,7 @@ int FirstLightImagingCameras::onCoolingSetpoint(MM::PropertyBase* pProp, MM::Act
 
 int FirstLightImagingCameras::onFrameRateMin(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onFrameRateMin"<< std::endl;
+	LogMessage("In onFrameRateMin", true);
     if (_cblueOne && eAct == MM::BeforeGet)
     {
         double frameRateMin;
@@ -483,7 +493,7 @@ int FirstLightImagingCameras::onFrameRateMin(MM::PropertyBase* pProp, MM::Action
 
 int FirstLightImagingCameras::onFrameRateMax(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onFrameRateMax"<< std::endl;
+	LogMessage("In onFrameRateMax", true);
     if (_cblueOne && eAct == MM::BeforeGet)
     {
         double frameRateMax;
@@ -495,7 +505,7 @@ int FirstLightImagingCameras::onFrameRateMax(MM::PropertyBase* pProp, MM::Action
 
 int FirstLightImagingCameras::onExposureTime(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onExposureTime"<< std::endl;
+	LogMessage("In onExposureTime", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -516,7 +526,7 @@ int FirstLightImagingCameras::onExposureTime(MM::PropertyBase* pProp, MM::Action
 
 int FirstLightImagingCameras::onExposureTimeMin(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onExposureTimeMin"<< std::endl;
+	LogMessage("In onExposureTimeMin", true);
     if (_cblueOne && eAct == MM::BeforeGet)
     {
         double exposureMin;
@@ -528,7 +538,7 @@ int FirstLightImagingCameras::onExposureTimeMin(MM::PropertyBase* pProp, MM::Act
 
 int FirstLightImagingCameras::onExposureTimeMax(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onExposureTimeMax"<< std::endl;
+	LogMessage("In onExposureTimeMax", true);
     if (_cblueOne && eAct == MM::BeforeGet)
     {
         double exposureMax;
@@ -540,7 +550,7 @@ int FirstLightImagingCameras::onExposureTimeMax(MM::PropertyBase* pProp, MM::Act
 
 int FirstLightImagingCameras::onGain(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onGain" << std::endl;
+	LogMessage("In onGain", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -578,7 +588,7 @@ int FirstLightImagingCameras::onGain(MM::PropertyBase* pProp, MM::ActionType eAc
 
 int FirstLightImagingCameras::onConvEfficiency(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onConvEfficiency" << std::endl;
+	LogMessage("In onConvEfficiency", true);
 	if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -610,7 +620,7 @@ int FirstLightImagingCameras::onConvEfficiency(MM::PropertyBase* pProp, MM::Acti
 
 int FirstLightImagingCameras::onPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onPixelFormat" << std::endl;
+	LogMessage("In onPixelFormat", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -634,7 +644,7 @@ int FirstLightImagingCameras::onPixelFormat(MM::PropertyBase* pProp, MM::ActionT
 
 int FirstLightImagingCameras::onReverseX(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onReverseX" << std::endl;
+	LogMessage("In onReverseX", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -655,7 +665,7 @@ int FirstLightImagingCameras::onReverseX(MM::PropertyBase* pProp, MM::ActionType
 
 int FirstLightImagingCameras::onReverseY(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onReverseY" << std::endl;
+	LogMessage("In onReverseY", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -677,7 +687,7 @@ int FirstLightImagingCameras::onReverseY(MM::PropertyBase* pProp, MM::ActionType
 
 int FirstLightImagingCameras::onFanMode(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onFanMode" << std::endl;
+	LogMessage("In onFanMode", true);
     if (_cblueOne)
     {
         if (eAct == MM::AfterSet)
@@ -701,7 +711,7 @@ int FirstLightImagingCameras::onFanMode(MM::PropertyBase* pProp, MM::ActionType 
 
 int FirstLightImagingCameras::onDeviceStatus(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onDeviceStatus" << std::endl;
+	LogMessage("In onDeviceStatus", true);
     if (_cblueOne && eAct == MM::BeforeGet)
     {
         char status[256];
@@ -711,41 +721,161 @@ int FirstLightImagingCameras::onDeviceStatus(MM::PropertyBase* pProp, MM::Action
     return DEVICE_OK;
 }
 
+int FirstLightImagingCameras::onAcquisitionMode(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    LogMessage("In onAcquisitionMode", true);
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string mode;
+            pProp->Get(mode);
+
+            AcquisitionModeEnum acqMode;
+            if (mode == "Continuous")
+                acqMode = AcquisitionMode_Continuous;
+            else if (mode == "SingleFrame")
+                acqMode = AcquisitionMode_SingleFrame;
+            else if (mode == "MultiFrame")
+                acqMode = AcquisitionMode_MultiFrame;
+            else
+                return DEVICE_INVALID_PROPERTY_VALUE;
+
+            if (!CblueSfnc_setAcquisitionMode(acqMode))
+            {
+                LogMessage("Failed to set acquisition mode to " + mode, false);
+                return DEVICE_ERR;
+            }
+        }
+        else if (eAct == MM::BeforeGet)
+        {
+            AcquisitionModeEnum acqMode;
+            if (!CblueSfnc_getAcquisitionMode(&acqMode))
+            {
+                LogMessage("Failed to get acquisition mode", false);
+                return DEVICE_ERR;
+            }
+
+            std::string mode;
+            switch (acqMode)
+            {
+                case AcquisitionMode_Continuous:
+                    mode = "Continuous";
+                    break;
+                case AcquisitionMode_SingleFrame:
+                    mode = "SingleFrame";
+                    break;
+                case AcquisitionMode_MultiFrame:
+                    mode = "MultiFrame";
+                    break;
+                default:
+                    return DEVICE_ERR;
+            }
+            pProp->Set(mode.c_str());
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onAcquisitionStart(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    LogMessage("In onAcquisitionStart", true);
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string val;
+            pProp->Get(val);
+            if (val == "1")
+            {
+                if (!CblueSfnc_executeAcquisitionStart())
+                {
+                    LogMessage("Failed to start acquisition", false);
+                    return DEVICE_ERR;
+                }
+            }
+            pProp->Set("0"); // Reset the button
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onAcquisitionStop(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    LogMessage("In onAcquisitionStop", true);
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string val;
+            pProp->Get(val);
+            if (val == "1")
+            {
+                if (!CblueSfnc_executeAcquisitionStop())
+                {
+                    LogMessage("Failed to stop acquisition", false);
+                    return DEVICE_ERR;
+                }
+            }
+            pProp->Set("0"); // Reset the button
+        }
+    }
+    return DEVICE_OK;
+}
+
+int FirstLightImagingCameras::onAcquisitionAbort(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    LogMessage("In onAcquisitionAbort", true);
+    if (_cblueOne)
+    {
+        if (eAct == MM::AfterSet)
+        {
+            std::string val;
+            pProp->Get(val);
+            if (val == "1")
+            {
+                if (!CblueSfnc_executeAcquisitionAbort())
+                {
+                    LogMessage("Failed to abort acquisition", false);
+                    return DEVICE_ERR;
+                }
+            }
+            pProp->Set("0"); // Reset the button
+        }
+    }
+    return DEVICE_OK;
+}
 
 //---------------------------------------------------------------
 void FirstLightImagingCameras::imageReceived(const uint8_t* image)
 {
-	std::cout << "In imageReceived (before _isCapturing check)." << std::endl;
+	//LogMessage("In imageReceived (before _isCapturing check).", true);
 	if (!_isCapturing)
 		return;
 
-	std::cout << "In imageReceived" << std::endl;
-	unsigned int w = GetImageWidth();
-	unsigned int h = GetImageHeight();
-	unsigned int b = GetImageBytesPerPixel();
+	LogMessage("In imageReceived", true);
 
 	Metadata md;
 	char label[MM::MaxStrLength];
 	GetLabel(label);
 	md.put(MM::g_Keyword_Metadata_CameraLabel, label);
-	md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString((long)w));
-	md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString((long)h));
+	md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString((long)_currentWidth));
+	md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString((long)_currentHeight));
 
 	MM::Core* core = GetCoreCallback();
 
-	int ret = core->InsertImage(this, image, w, h, b, 1, md.Serialize().c_str(), false);
+	int ret = core->InsertImage(this, image, _currentWidth, _currentHeight, _bytesPerPixel, 1, md.Serialize().c_str(), false);
 	if (ret == DEVICE_BUFFER_OVERFLOW)
 	{
-		// do not stop on overflow - just reset the buffer
 		core->ClearImageBuffer(this);
-		core->InsertImage(this, image, w, h, b, 1, md.Serialize().c_str(), false);
+		core->InsertImage(this, image, _currentWidth, _currentHeight, _bytesPerPixel, 1, md.Serialize().c_str(), false);
 	}
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::Initialize()
 {
-	std::cout << "In Initialize" << std::endl;
+	LogMessage("In Initialize", true);
 	if (_initialized)
 		return DEVICE_OK;
 
@@ -757,7 +887,7 @@ int FirstLightImagingCameras::Initialize()
 //---------------------------------------------------------------
 int FirstLightImagingCameras::Shutdown()
 {
-	std::cout << "In Shutdown" << std::endl;
+	LogMessage("In Shutdown", true);
 	_initialized = false;
 	return DEVICE_OK;
 }
@@ -765,37 +895,35 @@ int FirstLightImagingCameras::Shutdown()
 //---------------------------------------------------------------
 void FirstLightImagingCameras::GetName(char* name) const
 {
-	std::cout << "In GetName" << std::endl;
+	LogMessage("In GetName", true);
 	CDeviceUtils::CopyLimitedString(name, _cameraName.c_str());
 }
 
 //---------------------------------------------------------------
 long FirstLightImagingCameras::GetImageBufferSize() const
 {
-	std::cout << "In GetImageBufferSize" <<::std::endl;
-	uint16_t width, height;
-	FliSdk_getCurrentImageDimension(&width, &height);
-	return width * height * 2;
+	LogMessage("In GetImageBufferSize", true);
+	return _currentWidth * _currentHeight * _bytesPerPixel;
 }
 
 //---------------------------------------------------------------
 unsigned FirstLightImagingCameras::GetBitDepth() const
 {
-	std::cout << "In GetBitDepth" <<::std::endl;
+	LogMessage("In GetBitDepth", true);
 	return 16;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::GetBinning() const
 {
-	std::cout << "In GetBinning" <<::std::endl;
+	LogMessage("In GetBinning", true);
 	return 1;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::SetBinning(int binSize)
 {
-	std::cout << "In SetBinning" <<::std::endl;
+	LogMessage("In SetBinning", true);
 	(void)binSize;
 	return DEVICE_OK;
 }
@@ -803,7 +931,7 @@ int FirstLightImagingCameras::SetBinning(int binSize)
 //---------------------------------------------------------------
 void FirstLightImagingCameras::SetExposure(double exp_ms)
 {
-	std::cout << "In SetExposure" <<::std::endl;
+	LogMessage("In SetExposure", true);
 	if (_credTwo)
 		Cred2_setTint(exp_ms / 1000.0);
 	else if (_credThree)
@@ -815,7 +943,7 @@ void FirstLightImagingCameras::SetExposure(double exp_ms)
 //---------------------------------------------------------------
 double FirstLightImagingCameras::GetExposure() const
 {
-	std::cout << "In GetExposure" <<::std::endl;
+	LogMessage("In GetExposure", true);
 	double tint;
 
 	if (_credTwo)
@@ -833,7 +961,7 @@ double FirstLightImagingCameras::GetExposure() const
 //---------------------------------------------------------------
 int FirstLightImagingCameras::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
 {
-	std::cout << "In SetROI" <<::std::endl;
+	LogMessage("In SetROI", true);
 	if (_credTwo || _credThree) {
 		CroppingData_C cropping;
 		cropping.col1 = roundUp(x, 32);
@@ -843,19 +971,20 @@ int FirstLightImagingCameras::SetROI(unsigned x, unsigned y, unsigned xSize, uns
 		FliSdk_setCroppingState(true, cropping);
 	}
 	else if (_cblueOne) {
-			CblueSfnc_setOffsetX(roundUp(x, 16));
-			CblueSfnc_setOffsetY(roundUp(y, 8));
-			CblueSfnc_setWidth(roundUp(x+xSize, 16));
-			CblueSfnc_setHeight(roundUp(y+ySize, 8));
+		CblueSfnc_setOffsetX(roundUp(x, 16));
+		CblueSfnc_setOffsetY(roundUp(y, 8));
+		CblueSfnc_setWidth(roundUp(x+xSize, 16));
+		CblueSfnc_setHeight(roundUp(y+ySize, 8));
 	}
 	_croppingEnabled = true;
+	updateImageDimensions();  // Update dimensions after changing ROI
 	return DEVICE_OK;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize)
 {
-	std::cout << "In GetROI" <<::std::endl;
+	LogMessage("In GetROI", true);
 	if (!_croppingEnabled)
 	{
 		x = 0;
@@ -893,7 +1022,7 @@ int FirstLightImagingCameras::GetROI(unsigned& x, unsigned& y, unsigned& xSize, 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::ClearROI()
 {
-	std::cout << "In ClearROI" <<::std::endl;
+	LogMessage("In ClearROI", true);
 	if (_credTwo || _credThree) {
 		CroppingData_C cropping;
 		cropping.col1 = 0;
@@ -903,7 +1032,6 @@ int FirstLightImagingCameras::ClearROI()
 		FliSdk_setCroppingState(false, cropping);
 	}
 	else if (_cblueOne) {
-		// Reset ROI to full image dimensions
 		int64_t widthMax, heightMax;
 		CblueSfnc_getWidthMax(&widthMax);
 		CblueSfnc_getHeightMax(&heightMax);
@@ -914,6 +1042,7 @@ int FirstLightImagingCameras::ClearROI()
 		CblueSfnc_setHeight(heightMax);
 	}
 	_croppingEnabled = false;
+	updateImageDimensions();  // Update dimensions after clearing ROI
 	return DEVICE_OK;
 }
 
@@ -927,87 +1056,41 @@ int FirstLightImagingCameras::IsExposureSequenceable(bool& isSequenceable) const
 //---------------------------------------------------------------
 const unsigned char* FirstLightImagingCameras::GetImageBuffer()
 {
-	std::cout << "In GetImageBuffer" <<::std::endl;
+	LogMessage("In GetImageBuffer", true);
 	return FliSdk_getRawImage(-1);
 }
 
 //---------------------------------------------------------------
 unsigned FirstLightImagingCameras::GetImageWidth() const
 {
-	std::cout << "In GetImageWidth" <<::std::endl;
-	uint16_t width_;
-	if (_credTwo || _credThree) 
-    {
-        uint16_t width, height;
-        FliSdk_getCurrentImageDimension(&width, &height);
-        width_ = width;
-    } 
-    else if (_cblueOne) 
-    {
-        int64_t width;
-        CblueSfnc_getWidth(&width);
-
-		// Safely cast after checking range
-        if (width >= 0 && width <= 65535) // Hardcoded max value for uint16_t
-        {
-            width_ = static_cast<uint16_t>(width);
-        } 
-        else 
-        {
-            std::cerr << "Width value out of range for uint16_t: " << width << std::endl;
-            width_ = 0; // Fallback to 0 or handle error appropriately
-        }
-    }
-	return width_;
+	LogMessage("In GetImageWidth", true);
+	return _currentWidth;
 }
 
 //---------------------------------------------------------------
 unsigned FirstLightImagingCameras::GetImageHeight() const
 {
-	std::cout << "In GetImageHeight" <<::std::endl;
-	uint16_t height_;
-	if (_credTwo || _credThree) 
-    {
-        uint16_t width, height;
-        FliSdk_getCurrentImageDimension(&width, &height);
-        height_ = height;
-    } 
-    else if (_cblueOne) 
-    {
-        int64_t height;
-        CblueSfnc_getHeight(&height);
-
-		// Safely cast after checking range
-        if (height >= 0 && height <= 65535) // Hardcoded max value for uint16_t
-        {
-            height_ = static_cast<uint16_t>(height);
-        } 
-        else 
-        {
-            std::cerr << "Width value out of range for uint16_t: " << height << std::endl;
-            height_ = 0; // Fallback to 0 or handle error appropriately
-        }
-    }
-	return height_;
+	LogMessage("In GetImageHeight", true);
+	return _currentHeight;
 }
 
 //---------------------------------------------------------------
 unsigned FirstLightImagingCameras::GetImageBytesPerPixel() const
 {
-	return 2;
+	return _bytesPerPixel;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::SnapImage()
 {
-	std::cout << "In SnapImage" <<::std::endl;
+	LogMessage("In SnapImage", true);
 	return DEVICE_OK;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::StartSequenceAcquisition(long /*numImages*/, double /*interval_ms*/, bool /*stopOnOverflow*/)
 {
-	std::cout << "In StartSequenceAcquisition" <<::std::endl;
+	LogMessage("In StartSequenceAcquisition", true);
 	_isCapturing = true;
 	return DEVICE_OK;
 }
@@ -1015,7 +1098,7 @@ int FirstLightImagingCameras::StartSequenceAcquisition(long /*numImages*/, doubl
 //---------------------------------------------------------------
 int FirstLightImagingCameras::StopSequenceAcquisition()
 {
-	std::cout << "In StopSequenceAcquisition" <<::std::endl;
+	LogMessage("In StopSequenceAcquisition", true);
 	_isCapturing = false;
 	return DEVICE_OK;
 }
@@ -1023,20 +1106,20 @@ int FirstLightImagingCameras::StopSequenceAcquisition()
 //---------------------------------------------------------------
 void FirstLightImagingCameras::OnThreadExiting() throw()
 {
-	std::cout << "In OnThreadExiting" <<::std::endl;
+	LogMessage("In OnThreadExiting", true);
 }
 
 //---------------------------------------------------------------
 bool FirstLightImagingCameras::IsCapturing()
 {
-	std::cout << "In isCapturing" <<::std::endl;
+	LogMessage("In isCapturing", true);
 	return _isCapturing;
 }
 
 //---------------------------------------------------------------
 void FirstLightImagingCameras::refreshValues()
 {
-	std::cout << "In refreshValues" <<::std::endl;
+	LogMessage("In refreshValues", true);
 	if (_credTwo)
 	{
 		double val;
@@ -1070,7 +1153,7 @@ void FirstLightImagingCameras::refreshValues()
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onMaxExposure" <<::std::endl;
+	LogMessage("In onMaxExposure", true);
 	if (eAct == MM::BeforeGet)
 	{
 		double tintMin;
@@ -1087,7 +1170,7 @@ int FirstLightImagingCameras::onMaxExposure(MM::PropertyBase* pProp, MM::ActionT
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onMaxFps" <<::std::endl;
+	LogMessage("In onMaxFps", true);
 	if (eAct == MM::BeforeGet)
 	{
 		FliCamera_getFpsMax(&_maxFps);
@@ -1099,7 +1182,7 @@ int FirstLightImagingCameras::onMaxFps(MM::PropertyBase* pProp, MM::ActionType e
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onFps(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onFps" <<::std::endl;
+	LogMessage("In onFps", true);
 	if (_credTwo || _credThree) {
 		if (eAct == MM::BeforeGet)
 		{
@@ -1112,28 +1195,70 @@ int FirstLightImagingCameras::onFps(MM::PropertyBase* pProp, MM::ActionType eAct
 			FliCamera_setFps(_fps);
 		}
 	}
-    if (_cblueOne)
-    {
-        if (eAct == MM::AfterSet)
-        {
-            double fps;
-            pProp->Get(fps);
-            CblueSfnc_setAcquisitionFrameRate(fps);
-        }
-        else if (eAct == MM::BeforeGet)
-        {
-            double fps;
-            CblueSfnc_getAcquisitionFrameRate(&fps);
-            pProp->Set(fps);
-        }
-    }
+	else if (_cblueOne)
+	{
+		if (eAct == MM::AfterSet)
+		{
+			double fps;
+			pProp->Get(fps);
+			
+			// Get the allowed range for frame rate
+			double minFps, maxFps;
+			Cblue1_getAcquisitionFrameRateMinReg(&minFps);
+			Cblue1_getAcquisitionFrameRateMaxReg(&maxFps);
+			
+			// Check if requested fps is within valid range
+			if (fps < minFps || fps > maxFps)
+			{
+				LogMessage("Requested frame rate " + std::to_string(fps) + " Hz is outside valid range [" + 
+						  std::to_string(minFps) + ", " + std::to_string(maxFps) + "] Hz", false);
+				return DEVICE_INVALID_PROPERTY_VALUE;
+			}
+
+			// Try to set the frame rate
+			try {
+				// Then set the frame rate
+				if (CblueSfnc_setAcquisitionFrameRate(fps) != true)
+				{
+					LogMessage("Failed to set frame rate to " + std::to_string(fps) + " Hz", false);
+					return DEVICE_ERR;
+				}
+				
+				// Verify the frame rate was set correctly
+				double actualFps;
+				CblueSfnc_getAcquisitionFrameRate(&actualFps);
+				if (abs(actualFps - fps) > 0.1) // Allow for small floating point differences
+				{
+					LogMessage("Frame rate was set to " + std::to_string(actualFps) + 
+							 " Hz instead of requested " + std::to_string(fps) + " Hz", false);
+				}
+			}
+			catch (...) {
+				LogMessage("Exception occurred while setting frame rate", false);
+				return DEVICE_ERR;
+			}
+		}
+		else if (eAct == MM::BeforeGet)
+		{
+			double fps;
+			if (CblueSfnc_getAcquisitionFrameRate(&fps) == true)
+			{
+				pProp->Set(fps);
+			}
+			else
+			{
+				LogMessage("Failed to get current frame rate", false);
+				return DEVICE_ERR;
+			}
+		}
+	}
 	return DEVICE_OK;
 }
 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onCameraChange(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onCameraChange" << std::endl;
+	LogMessage("In onCameraChange", true);
 	if (eAct == MM::AfterSet)
 	{
 		std::string camera;
@@ -1170,7 +1295,7 @@ int FirstLightImagingCameras::onCameraChange(MM::PropertyBase* pProp, MM::Action
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onDetectCameras(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onDetectCameras" << std::endl;
+	LogMessage("In onDetectCameras", true);
 	if (eAct == MM::AfterSet)
 	{
 		std::string detect;
@@ -1239,7 +1364,7 @@ int FirstLightImagingCameras::onDetectCameras(MM::PropertyBase* pProp, MM::Actio
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onSendCommand(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onSendCommand" << std::endl;
+	LogMessage("In onSendCommand", true);
 	static char response[200];
 	if (eAct == MM::AfterSet)
 	{
@@ -1259,7 +1384,7 @@ int FirstLightImagingCameras::onSendCommand(MM::PropertyBase* pProp, MM::ActionT
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onBinning(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onBinning" << std::endl;
+	LogMessage("In onBinning", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1282,7 +1407,7 @@ int FirstLightImagingCameras::onBinning(MM::PropertyBase* pProp, MM::ActionType 
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onSetMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onSetMaxExposure" << std::endl;
+	LogMessage("In onSetMaxExposure", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1311,7 +1436,7 @@ int FirstLightImagingCameras::onSetMaxExposure(MM::PropertyBase* pProp, MM::Acti
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onSetMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onSetMaxFps" << std::endl;
+	LogMessage("In onSetMaxFps", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1335,7 +1460,7 @@ int FirstLightImagingCameras::onSetMaxFps(MM::PropertyBase* pProp, MM::ActionTyp
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onBuildBias(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onBuildBias" << std::endl;
+	LogMessage("In onBuildBias", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1359,7 +1484,7 @@ int FirstLightImagingCameras::onBuildBias(MM::PropertyBase* pProp, MM::ActionTyp
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onApplyBias(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onApplyBias" << std::endl;
+	LogMessage("In onApplyBias", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1389,7 +1514,7 @@ int FirstLightImagingCameras::onApplyBias(MM::PropertyBase* pProp, MM::ActionTyp
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onApplySensorTemp(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onApplySensorTemp" << std::endl;
+	LogMessage("In onApplySensorTemp", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
@@ -1415,7 +1540,7 @@ int FirstLightImagingCameras::onApplySensorTemp(MM::PropertyBase* pProp, MM::Act
 //---------------------------------------------------------------
 int FirstLightImagingCameras::onShutdown(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	std::cout << "In onShutdown" << std::endl;
+	LogMessage("In onShutdown", true);
 	int ret = DEVICE_ERR;
 	switch (eAct)
 	{
