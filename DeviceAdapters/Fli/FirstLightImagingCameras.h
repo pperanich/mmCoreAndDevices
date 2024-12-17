@@ -23,70 +23,65 @@
 #pragma once
 
 #include <string>
-#include <memory>
 
 #include "DeviceBase.h"
 #include "DeviceThreads.h"
-#include "FliSdk.h"
-#include "FliCamera.h"
-#include "FliCred.h"
-#include "FliCredTwo.h"
-#include "FliCredThree.h"
-#include "FliCblueOne.h"
+#include "FliSdk_C.h"
 
 class FliThreadImp;
 
 class FirstLightImagingCameras : public CCameraBase<FirstLightImagingCameras>
 {
 public:
-    friend class FliThreadImp;
 
-    FirstLightImagingCameras(std::string cameraName);
-    ~FirstLightImagingCameras();
+	friend class FliThreadImp;
 
-    // Inherited via CCameraBase
-    int Initialize();
-    int Shutdown();
-    void GetName(char* name) const;
-    long GetImageBufferSize() const;
-    unsigned GetBitDepth() const;
-    int GetBinning() const;
-    int SetBinning(int binSize);
-    void SetExposure(double exp_ms);
-    double GetExposure() const;
-    int SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize);
-    int GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize);
-    int ClearROI();
-    int IsExposureSequenceable(bool& isSequenceable) const;
-    const unsigned char* GetImageBuffer();
-    unsigned GetImageWidth() const;
-    unsigned GetImageHeight() const;
-    unsigned GetImageBytesPerPixel() const;
-    int SnapImage();
-    int StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow);
-    int StopSequenceAcquisition();
-    void OnThreadExiting() throw();
-    bool IsCapturing();
+	FirstLightImagingCameras(std::string cameraName);
+	~FirstLightImagingCameras();
 
-    void refreshValues();
-    void imageReceived(const uint8_t* image);
+	// Inherited via CCameraBase
+	int Initialize();
+	int Shutdown();
+	void GetName(char* name) const;
+	long GetImageBufferSize() const;
+	unsigned GetBitDepth() const;
+	int GetBinning() const;
+	int SetBinning(int binSize);
+	void SetExposure(double exp_ms);
+	double GetExposure() const;
+	int SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize);
+	int GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize);
+	int ClearROI();
+	int IsExposureSequenceable(bool& isSequenceable) const;
+	const unsigned char* GetImageBuffer();
+	unsigned GetImageWidth() const;
+	unsigned GetImageHeight() const;
+	unsigned GetImageBytesPerPixel() const;
+	int SnapImage();
+	int StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow);
+	int StopSequenceAcquisition();
+	void OnThreadExiting() throw();
+	bool IsCapturing();
+
+	void refreshValues();
+	void imageReceived(const uint8_t* image);
 
 private:
-    int onMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onFps(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onCameraChange(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onDetectCameras(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onSendCommand(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onSetMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onSetMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onBuildBias(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onApplyBias(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onApplySensorTemp(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int onShutdown(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onFps(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onCameraChange(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onDetectCameras(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onSendCommand(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onSetMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onSetMaxFps(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onBuildBias(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onApplyBias(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onApplySensorTemp(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int onShutdown(MM::PropertyBase* pProp, MM::ActionType eAct);
 
-    // Property Actions for CBlue1
+	// Property Actions for CBlue1
     int onTemperatureSelector(MM::PropertyBase* pProp, MM::ActionType eAct);
     int onCoolingSetpoint(MM::PropertyBase* pProp, MM::ActionType eAct);
     int onFrameRateMin(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -102,37 +97,43 @@ private:
     int onFanMode(MM::PropertyBase* pProp, MM::ActionType eAct);
     int onDeviceStatus(MM::PropertyBase* pProp, MM::ActionType eAct);
 
-    void createProperties();
+	void createProperties();
 
 private:
-    bool _initialized;
-    std::string _cameraName;
-    int _cameraModel;
-    uint8_t _nbCameras;
-    bool _credTwo;
-    bool _credThree;
-    bool _cblueOne;
-    bool _isCapturing;
-    
-    std::unique_ptr<fli::FliSdk> _sdk;
-    std::shared_ptr<fli::FliCamera> _camera;
-    std::vector<std::shared_ptr<fli::FliCamera>> _listOfCameras;
+	bool			_initialized;
+	std::string		_cameraName;
+	CameraModel_C	_cameraModel;
+	bool			_credTwo;
+	bool			_credThree;
+	bool			_cblueOne;
+	double			_fpsTrigger;
+	double			_maxExposure;
+	double			_maxFps;
+	double			_sensorTemp;
+	double			_fps;
+	long			_numImages;
+	bool			_croppingEnabled;
+	const char**	_listOfCameras;
+	uint8_t			_nbCameras;
+	FliThreadImp*	_refreshThread;
+	callbackHandler	_callbackCtx;
+	bool			_isCapturing;
 };
 
 class FliThreadImp : public MMDeviceThreadBase
 {
 public:
-    FliThreadImp(FirstLightImagingCameras* camera);
-    ~FliThreadImp();
+	FliThreadImp(FirstLightImagingCameras* camera);
+	~FliThreadImp();
 
-    int svc();
-    void exit();
-
-private:
-    bool mustExit();
+	int svc();
+	void exit();
 
 private:
-    MMThreadLock             _lock;
-    bool                     _exit;
-    FirstLightImagingCameras* _camera;
+	bool mustExit();
+
+private:
+	MMThreadLock				_lock;
+	bool						_exit;
+	FirstLightImagingCameras* _camera;
 };
